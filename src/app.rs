@@ -62,10 +62,10 @@ impl StreamManager{
         self.sender.send(args.in_buffer.to_vec()).ok();
         return pa::Continue
     }
-    fn get_callback(&self) -> Closure<Fn(DuplexCallbackArgs<f32,f32>) -> CallbackResult>{
-        let callback = self.callback;
-        return Closure::wrap(Box::new(callback) as Box<Fn(DuplexCallbackArgs<f32,f32>) -> CallbackResult>);
-    }
+    // fn get_callback(&self) -> Closure<Fn(DuplexCallbackArgs<f32,f32>) -> CallbackResult>{
+    //     let callback = self.callback;
+    //     return Closure::wrap(Box::new(callback) as Box<Fn(DuplexCallbackArgs<f32,f32>) -> CallbackResult>);
+    // }
 
     fn calc_spectrum(&self) -> FrequencySpectrum{
         let sample = self.receiver.try_recv().unwrap();
@@ -81,12 +81,19 @@ impl StreamManager{
 
 }
 
+fn callback(args: DuplexCallbackArgs<f32,f32>) -> CallbackResult{
+    for (output_sample, input_sample) in args.out_buffer.iter_mut().zip(args.in_buffer.iter()){
+        *output_sample = *input_sample;
+    }
+    return pa::Continue;
+}
+
 impl AppState {
     fn new(output: DeviceIndex, input: DeviceIndex, ) -> Self {
         let stream_manager = StreamManager::new();
         let mut pa = PortAudio::new().unwrap();
         let mut setting = pa_default_setting(&mut pa, 2, 44_100.0, 2048, true);
-        let mut stream = pa.open_non_blocking_stream(setting, stream_manager.get_callback).unwrap();
+        let mut stream = pa.open_non_blocking_stream(setting, callback).unwrap();
         Self {
             duration: 10.0,
             processing: false,
