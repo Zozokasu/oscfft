@@ -1,0 +1,23 @@
+[package]
+name = "fft2osc"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+portaudio = "*"
+three="*"
+cgmath= "*"
+eframe={ version = "0.27.0", default-features = false, features = [
+    "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts", # Embed the default egui fonts.
+    "glow",          # Use the glow rendering backend. Alternative: "wgpu".
+    "persistence",   # Enable restoring app state when restarting the app.
+] }
+env_logger = "0.11.3"
+log = "0.4.21"
+wasm-bindgen-futures = "0.4.42"
+egui="*"
+serde = { version = "1.0.200", features = ["derive"] }
+spectrum-analyzer = "1.5.0"
