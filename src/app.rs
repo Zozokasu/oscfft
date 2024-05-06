@@ -191,10 +191,10 @@ impl eframe::App for TemplateApp {
                                 )
                                 .unwrap();
                                 let x:Vec<f32> = spectrum_hann_window.data().iter().map(|x| x.1.val()).collect();
-                                let x0 = &x[0..256];
-                                let x1 = &x[256..512];
-                                let x2 = &x[512..768];
-                                let x3 = &x[768..1024];
+                                let x0 = &x[1..257];
+                                let x1 = &x[257..513];
+                                let x2 = &x[513..769];
+                                let x3 = &x[769..1025];
                                 let message0 = async_osc::rosc::OscMessage{addr:"/fft/0".to_string(),args:x0.iter().map(|x| async_osc::rosc::OscType::Float(*x)).collect::<Vec<async_osc::rosc::OscType>>()};
                                 let message1 = async_osc::rosc::OscMessage{addr:"/fft/1".to_string(),args:x1.iter().map(|x| async_osc::rosc::OscType::Float(*x)).collect::<Vec<async_osc::rosc::OscType>>()};
                                 let message2 = async_osc::rosc::OscMessage{addr:"/fft/2".to_string(),args:x2.iter().map(|x| async_osc::rosc::OscType::Float(*x)).collect::<Vec<async_osc::rosc::OscType>>()};
