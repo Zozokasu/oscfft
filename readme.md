@@ -6,6 +6,9 @@
 を指定して宛先にオーディオ入力のスペクトル情報を送信できます。一秒間にだいたい20回くらい送信されます。音楽に合わせてスペクトルを表示したいときに使ってください。
 
 見本 https://twitter.com/zozokasu2/status/1786923894328451365
+# ダウンロード
+ここ https://github.com/Zozokasu/oscfft/releases/tag/release
+![image](https://github.com/Zozokasu/oscfft/assets/13605108/1271fde6-16e5-4498-bb4a-11463739eb68)
 
 # OSCアドレス・引数
 - /fft/0
