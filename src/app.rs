@@ -1,6 +1,7 @@
 use spectrum_analyzer::scaling::divide_by_N_sqrt;
 use spectrum_analyzer::windows::hann_window;
 use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
+use async_osc::{OscSocket};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -15,6 +16,15 @@ pub struct TemplateApp {
 
     #[serde(skip)]
     device_configuration: DeviceConfiguration,
+
+    #[serde(skip)]
+    target_address: String,
+
+    #[serde(skip)]
+    target_port: u16,
+
+    #[serde(skip)]
+    is_running: bool,
 }
 
 pub struct DeviceConfiguration {
@@ -42,6 +52,9 @@ impl Default for TemplateApp {
                     .collect(),
                 handle: None,
             },
+            target_address: "127.0.0.1".to_string(),
+            target_port: 50000,
+            is_running: false,
         }
     }
 }
@@ -66,16 +79,16 @@ impl eframe::App for TemplateApp {
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("Quit").clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                    if ui.button("ahoaho").clicked() {
-                        println!("ahoaho");
-                    }
-                });
+                // ui.menu_button("File", |ui| {
+                //     if ui.button("Quit").clicked() {
+                //         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                //     }
+                //     if ui.button("ahoaho").clicked() {
+                //         println!("ahoaho");
+                //     }
+                // });
 
-                ui.add_space(16.0);
+                // ui.add_space(16.0);
 
                 egui::widgets::global_dark_light_mode_buttons(ui);
             });
@@ -83,17 +96,17 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("Nanka eekanji no yatsu");
+            ui.heading("Audio Input -> FFT -> OSC Sender");
 
-            ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(&mut self.label);
-            });
+            // ui.horizontal(|ui| {
+            //     ui.label("Write something: ");
+            //     ui.text_edit_singleline(&mut self.label);
+            // });
 
-            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                self.value += 1.0;
-            }
+            // ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
+            // if ui.button("Increment").clicked() {
+            //     self.value += 1.0;
+            // }
 
             let ins = &self.device_configuration.input_devices;
 
@@ -120,14 +133,26 @@ impl eframe::App for TemplateApp {
                     });
                 });
 
-            if ui.button("toggle").clicked() {
+            ui.horizontal(|ui| {
+                ui.label("Receiver IP address: ");
+                ui.text_edit_singleline(&mut self.target_address);
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Receiver Port:");
+                ui.add(egui::Slider::new(&mut self.target_port, 0..=65535).text(""));
+            });
+
+            if ui.button(if self.is_running {"Stop"} else {"Start"}).clicked() {
                 if self.device_configuration.handle.is_some() {
                     self.device_configuration.handle = None;
-                    println!("ハンドルを開放しました。");
+                    self.is_running = false;
+                    //println!("ハンドルを開放しました。");
                 } else {
                     let Some(input) = &self.device_configuration.input_device else {
-                        panic!("デバイスが選択されていないのに、toggle押したやつが悪い。");
+                        return;
                     };
+                    self.is_running = true;
 
                     use cpal::traits::*;
 
@@ -139,12 +164,18 @@ impl eframe::App for TemplateApp {
                         .unwrap();
 
                     let config: cpal::StreamConfig = input.default_input_config().unwrap().into();
-
                     use tokio::sync::mpsc;
                     let (tx, mut rx) = mpsc::channel::<Vec<f32>>(16);
 
+                    //let socket = OscSocket::bind(format!("{}:{}", self.target_address, self.target_port));
+                    let addr_port = format!("{}:{}",self.target_address, self.target_port);
+                    let bind = format!("{}:0",self.target_address);
+
                     tokio::spawn(async move {
                         let mut recv_buffer: Vec<f32> = vec![];
+                        let socket = OscSocket::bind(bind).await.unwrap();
+                        //println!("{}",addr_port);
+                        socket.connect(&addr_port).await.unwrap();
 
                         while let Some(new) = rx.recv().await {
                             recv_buffer.extend(new);
@@ -159,15 +190,24 @@ impl eframe::App for TemplateApp {
                                     Some(&divide_by_N_sqrt),
                                 )
                                 .unwrap();
-
-                                let x = spectrum_hann_window.data().iter().nth(100).unwrap();
-                                let x = x.1.val() * 10000.0;
-                                println!("{}", "x".repeat(x as usize));
+                                let x:Vec<f32> = spectrum_hann_window.data().iter().map(|x| x.1.val()).collect();
+                                let x0 = &x[0..256];
+                                let x1 = &x[256..512];
+                                let x2 = &x[512..768];
+                                let x3 = &x[768..1024];
+                                let message0 = async_osc::rosc::OscMessage{addr:"/fft/0".to_string(),args:x0.iter().map(|x| async_osc::rosc::OscType::Float(*x)).collect::<Vec<async_osc::rosc::OscType>>()};
+                                let message1 = async_osc::rosc::OscMessage{addr:"/fft/1".to_string(),args:x1.iter().map(|x| async_osc::rosc::OscType::Float(*x)).collect::<Vec<async_osc::rosc::OscType>>()};
+                                let message2 = async_osc::rosc::OscMessage{addr:"/fft/2".to_string(),args:x2.iter().map(|x| async_osc::rosc::OscType::Float(*x)).collect::<Vec<async_osc::rosc::OscType>>()};
+                                let message3 = async_osc::rosc::OscMessage{addr:"/fft/3".to_string(),args:x3.iter().map(|x| async_osc::rosc::OscType::Float(*x)).collect::<Vec<async_osc::rosc::OscType>>()};
+                                socket.send(message0).await.unwrap();
+                                socket.send(message1).await.unwrap();
+                                socket.send(message2).await.unwrap();
+                                socket.send(message3).await.unwrap();
 
                                 recv_buffer = Vec::from(&recv_buffer[2048..]);
                             }
                         }
-                        println!("受信スレッドが停止しました。");
+                        //println!("受信スレッドが停止しました。");
                     });
 
                     let input_data_fn = move |samples: &[f32], _: &cpal::InputCallbackInfo| {
@@ -191,29 +231,33 @@ impl eframe::App for TemplateApp {
 
             ui.separator();
 
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/master/",
-                "Source code."
-            ));
+            ui.hyperlink_to("GitHub", "https://github.com/Zozokasu/oscfft");
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                powered_by_egui_and_eframe(ui);
-                egui::warn_if_debug_build(ui);
+                made_by_zozokasu(ui)
             });
         });
     }
 }
 
-fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
+// fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
+//     ui.horizontal(|ui| {
+//         ui.spacing_mut().item_spacing.x = 0.0;
+//         ui.label("Powered by ");
+//         ui.hyperlink_to("egui", "https://github.com/emilk/egui");
+//         ui.label(" and ");
+//         ui.hyperlink_to(
+//             "eframe",
+//             "https://github.com/emilk/egui/tree/master/crates/eframe",
+//         );
+//         ui.label(".");
+//     });
+// }
+
+fn made_by_zozokasu(ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
-        ui.label("Powered by ");
-        ui.hyperlink_to("egui", "https://github.com/emilk/egui");
-        ui.label(" and ");
-        ui.hyperlink_to(
-            "eframe",
-            "https://github.com/emilk/egui/tree/master/crates/eframe",
-        );
-        ui.label(".");
+        ui.label("Made by ");
+        ui.hyperlink_to("zozokasu", "https://zozoka.su/");
     });
 }
